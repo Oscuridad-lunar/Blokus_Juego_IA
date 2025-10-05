@@ -1,6 +1,7 @@
 # mesa.py
 from typing import List, Tuple, Dict, Set
-from pieza import generar_orientaciones, PIECES_BASE
+from pieza import generar_orientaciones
+from repositorio_piezas import PIEZAS
 
 Coord = Tuple[int, int]
 
@@ -83,7 +84,7 @@ class Mesa:
           - si NO es la primera: DEBE tocar por ESQUINA alguna propia
           - NUNCA tocar por LADO una propia
         """
-        if pieza_id not in PIECES_BASE:
+        if pieza_id not in PIEZAS.ids():
             return False, [], f"Pieza no reconocida: {pieza_id}"
 
         celdas = self._celdas_orientadas(pieza_id, orient_idx, ref)

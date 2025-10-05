@@ -1,8 +1,9 @@
 # juego.py
 from typing import List
 from mesa import Mesa
-from pieza import generar_orientaciones, PIECES_BASE
+from repositorio_piezas import PIEZAS
 from jugador import Jugador
+from pieza import generar_orientaciones  # <-- IMPORT NECESARIO
 
 class Juego:
     def __init__(self, filas: int = 20, columnas: int = 20, num_jugadores: int = 2):
@@ -16,7 +17,7 @@ class Juego:
 
         self.jugadores: List[Jugador] = []
         for i in range(num_jugadores):
-            piezas_iniciales = list(PIECES_BASE.keys())  # copia
+            piezas_iniciales = PIEZAS.ids()  # <-- ANTES: list(PIEZAS.keys())
             j = Jugador(
                 id=i+1,
                 nombre=nombres[i],
@@ -36,14 +37,10 @@ class Juego:
         self.turno_idx = (self.turno_idx + 1) % len(self.jugadores)
 
     def quedan_jugadas_posibles(self, jugador: Jugador) -> bool:
-        """Heurística simple: intenta validar al menos una orientación/pos en una vecindad.
-           Para no hacerlo costoso, probamos unas cuantas posiciones alrededor de todo el tablero.
-        """
-        # Estrategia rápida: muestreamos celdas cada 2 pasos para acelerar
+        """Heurística simple: intenta validar al menos una orientación/pos en una vecindad."""
         for pieza_id in jugador.piezas_disponibles:
             orientaciones = generar_orientaciones(pieza_id)
             for orient_idx in range(len(orientaciones)):
-                # muestreo r y c saltando de 2 en 2 para no probar 400 posiciones por orientación
                 for r in range(0, self.mesa.filas, 2):
                     for c in range(0, self.mesa.columnas, 2):
                         ok, _, _ = self.mesa.validar_colocacion(jugador.simbolo, pieza_id, orient_idx, (r, c))
@@ -66,7 +63,6 @@ class Juego:
 
     def _listar_piezas(self, jugador: Jugador):
         print(f"Piezas disponibles ({len(jugador.piezas_disponibles)}):")
-        # mostrar 10 por línea para que sea legible
         fila = []
         for i, pid in enumerate(sorted(jugador.piezas_disponibles)):
             fila.append(pid)
@@ -126,7 +122,6 @@ class Juego:
             print(f"❌ Jugada inválida: {motivo}")
             return False
 
-        # Colocar y actualizar estado del jugador
         colocado = self.mesa.colocar(jugador.simbolo, pieza_id, orient_idx, (r, c))
         if colocado:
             jugador.quitar_pieza(pieza_id)
@@ -146,17 +141,16 @@ class Juego:
         print("Escribe 'Q' cuando se te pida un número para cancelar esa acción.\n")
         self.mesa.mostrar()
 
-        # Si un jugador no puede jugar de entrada, igual debe intentar/o pasar.
         while True:
             jugador = self.jugador_actual()
 
-            # Si ningún jugador puede jugar (todos pasaron en la ronda), fin
+            # Fin del juego: todos pasaron seguidos
             if self.pases_consecutivos >= len(self.jugadores):
                 print("\n🏁 Todos pasaron. ¡Fin del juego!\n")
                 self._imprimir_puntajes()
                 break
 
-            # Chequeo rápido: ¿le queda al menos una jugada posible?
+            # Si no tiene jugadas posibles, pasa automáticamente
             if not jugador.piezas_disponibles or not self.quedan_jugadas_posibles(jugador):
                 print(f"[{jugador.simbolo}] {jugador.nombre} no tiene jugadas posibles. Debe pasar.")
                 jugador.marcar_paso()
@@ -164,28 +158,37 @@ class Juego:
                 self.siguiente_turno()
                 continue
 
+            # Menú de turno
             self._mostrar_menu_turno(jugador)
             opcion = input("Elige opción (1-5): ").strip()
 
             if opcion == "1":
                 exito = self._accion_colocar(jugador)
                 if exito:
+                    # Colocó bien: resetea pases y pasa al siguiente jugador
                     self.pases_consecutivos = 0
-                    # (opcional) sumar puntaje inmediato por celdas colocadas
-                # sin importar, avanzamos turno
-                self.siguiente_turno()
+                    self.siguiente_turno()
+                    continue
+                else:
+                    # Jugada inválida o cancelada: mismo jugador reintenta
+                    continue
 
             elif opcion == "2":
                 self.mesa.mostrar()
+                # Mismo jugador sigue
+                continue
 
             elif opcion == "3":
                 self._listar_piezas(jugador)
+                # Mismo jugador sigue
+                continue
 
             elif opcion == "4":
                 jugador.marcar_paso()
                 self.pases_consecutivos += 1
                 print(f"[{jugador.simbolo}] {jugador.nombre} pasó el turno.")
                 self.siguiente_turno()
+                continue
 
             elif opcion == "5":
                 print("Saliendo del juego...")
@@ -193,23 +196,19 @@ class Juego:
 
             else:
                 print("Opción no válida. Intenta de nuevo.")
+                continue
 
         print("Gracias por jugar. 👋")
 
     # ----------------- puntajes (simple) -----------------
     def _imprimir_puntajes(self):
-        # Puntaje simple: celdas colocadas = sumatoria de piezas puestas (tendríamos que
-        # contarlas; como no guardamos histórico en Mesa, lo haremos por piezas restantes.)
-        # Aproximación: piezas restantes → penaliza por cantidad de celdas que tendría esa pieza.
-        # Para exactitud, suma real = (todas celdas colocadas). Aquí: penalización por restantes.
         print("PUNTAJES (aprox. por piezas restantes):")
         tabla = []
         for j in self.jugadores:
             penal = 0
             for pid in j.piezas_disponibles:
-                # penalizamos por tamaño de la pieza = # celdas base
-                penal += len(PIECES_BASE[pid])
-            score = -penal  # menos penalización es mejor
+                penal += PIEZAS.tam(pid)   # <-- ANTES: len(PIEZAS[pid])
+            score = -penal
             tabla.append((score, j))
         tabla.sort(reverse=True, key=lambda x: x[0])
 
@@ -217,5 +216,4 @@ class Juego:
             print(f"{rank}. [{j.simbolo}] {j.nombre}  ->  {score} (piezas sin jugar: {len(j.piezas_disponibles)})")
 
 if __name__ == "__main__":
-    # Inicia el juego con 2 jugadores (A y B). Cambia a 3 o 4 si quieres.
     Juego(num_jugadores=2).iniciar()
